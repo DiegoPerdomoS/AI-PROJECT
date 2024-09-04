@@ -117,7 +117,7 @@ for fold in range(k_folds):
     cross_val_train_accuracies.append(train_accuracies)
     cross_val_val_accuracies.append(val_accuracies)
     
-    # Only graph the last fold
+
     if fold == k_folds - 1:
         # Graph accuracy and cost for each class
         for current_class in range(num_classes):
@@ -148,7 +148,6 @@ for epoch in range(max_epochs):
     for current_class in range(num_classes):
         params_list[current_class], _ = GD(params_list[current_class], train_x, train_y, alfa, current_class)
 
-# Evaluate on the test set
 final_test_accuracy = calculate_accuracy(params_list, df_x, df_y)
 print(f"Final Overall Accuracy (Cross-Validation): {final_test_accuracy * 100:.2f}%")
 
