@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+# Load and preprocess data
 columns = ["buying", "maint", "doors", "persons", "lug_boot", "safety", "class"]
 df = pd.read_csv('car.data', names=columns)
 
@@ -27,22 +28,27 @@ df['safety_squared'] = df['safety'] ** 2
 df['persons_lug_boot'] = df['persons'] * df['lug_boot']
 
 # Shuffle
-df = df.sample(frac=1, random_state=40).reset_index(drop=True)
+df = df.sample(frac=1, random_state=10).reset_index(drop=True)
 
 df_x = df[["buying", "maint", "doors", "persons", "lug_boot", "safety", 
            "buying_maint", "safety_squared", "persons_lug_boot"]]
 df_y = df["class"]
 
-# Split
-train_size = int(0.8 * len(df_x))
-train_x, test_x = df_x[:train_size], df_x[train_size:]
-train_y, test_y = df_y[:train_size], df_y[train_size:]
+# Split into training, validation, and test
+train_size = int(0.6 * len(df_x))
+val_size = int(0.2 * len(df_x))
+test_size = len(df_x) - train_size - val_size
 
-# Bias
+train_x, val_x, test_x = df_x[:train_size], df_x[train_size:train_size + val_size], df_x[train_size + val_size:]
+train_y, val_y, test_y = df_y[:train_size], df_y[train_size:train_size + val_size], df_y[train_size + val_size:]
+
+# Add bias
 train_x = np.c_[np.ones(len(train_x)), train_x]
+val_x = np.c_[np.ones(len(val_x)), val_x]
 test_x = np.c_[np.ones(len(test_x)), test_x]
 
 train_y = np.array(train_y)
+val_y = np.array(val_y)
 test_y = np.array(test_y)
 
 num_classes = len(np.unique(train_y))
@@ -53,7 +59,7 @@ def h(params, sample):
     z = -np.dot(params, sample)
     return 1 / (1 + np.exp(z))
 
-# Cost function (cross enthropy)
+# Cost function (cross entropy)
 def cost_function(params, samples, y, current_class):
     targets = (y == current_class).astype(int)
     predictions = h(params, samples.T)
@@ -93,9 +99,11 @@ max_epochs = 2000
 
 errors = []
 train_accuracies = {i: [] for i in range(num_classes)}
+val_accuracies = {i: [] for i in range(num_classes)}
 test_accuracies = {i: [] for i in range(num_classes)}
 costs_per_class = {i: [] for i in range(num_classes)}
 overall_train_accuracy = []
+overall_val_accuracy = []
 overall_test_accuracy = []
 
 for epoch in range(max_epochs):
@@ -106,31 +114,33 @@ for epoch in range(max_epochs):
         costs_per_class[current_class].append(class_cost)
         
         train_acc = calculate_accuracy(params_list, train_x, train_y, current_class)
+        val_acc = calculate_accuracy(params_list, val_x, val_y, current_class) 
         test_acc = calculate_accuracy(params_list, test_x, test_y, current_class)
         
         train_accuracies[current_class].append(train_acc)
+        val_accuracies[current_class].append(val_acc)
         test_accuracies[current_class].append(test_acc)
     
     epoch_cost = np.mean(epoch_costs)
     errors.append(epoch_cost)
 
     overall_train_acc = calculate_accuracy(params_list, train_x, train_y)
+    overall_val_acc = calculate_accuracy(params_list, val_x, val_y)
     overall_test_acc = calculate_accuracy(params_list, test_x, test_y)
     
     overall_train_accuracy.append(overall_train_acc)
+    overall_val_accuracy.append(overall_val_acc)
     overall_test_accuracy.append(overall_test_acc)
 
     if (epoch + 1) % 500 == 0: 
         print(f"Epoch {epoch+1}:")
         for current_class in range(num_classes):
-            print(f"  Class {current_class}: Train Accuracy = {train_accuracies[current_class][-1]:.4f}, Test Accuracy = {test_accuracies[current_class][-1]:.4f}")
+            print(f"  Class {current_class}: Train Accuracy = {train_accuracies[current_class][-1]:.4f}, Validation Accuracy = {val_accuracies[current_class][-1]:.4f}, Test Accuracy = {test_accuracies[current_class][-1]:.4f}")
 
-# Final Test
-test_predictions = predict_class(params_list, test_x)
-final_test_accuracy = calculate_accuracy(params_list, test_x, test_y)
-print(f"Final Test Accuracy: {final_test_accuracy * 100:.2f}%")
+final_val_accuracy = calculate_accuracy(params_list, val_x, val_y)
+print(f"Final Validation Accuracy: {final_val_accuracy * 100:.2f}%")
 
-# Graph overall cost, train and test accuracy
+# Graphs
 plt.figure(figsize=(14, 6))
 
 plt.subplot(1, 2, 1)
@@ -141,8 +151,9 @@ plt.ylabel('Cost')
 
 plt.subplot(1, 2, 2)
 plt.plot(overall_train_accuracy, label='Train Accuracy')
+plt.plot(overall_val_accuracy, label='Validation Accuracy')
 plt.plot(overall_test_accuracy, label='Test Accuracy')
-plt.title('Overall Train and Test Accuracy Over Epochs')
+plt.title('Overall Train, Validation, and Test Accuracy Over Epochs')
 plt.xlabel('Epochs')
 plt.ylabel('Accuracy')
 plt.legend()
@@ -150,12 +161,12 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-# Graph train and test accuracies / epochs and costs
 for current_class in range(num_classes):
     fig, axs = plt.subplots(1, 2, figsize=(14, 6))
     
     # Accuracy 
     axs[0].plot(train_accuracies[current_class], label=f'Train Accuracy Class {current_class}', linestyle='--')
+    axs[0].plot(val_accuracies[current_class], label=f'Validation Accuracy Class {current_class}', linestyle='--')
     axs[0].plot(test_accuracies[current_class], label=f'Test Accuracy Class {current_class}')
     axs[0].set_xlabel('Epochs')
     axs[0].set_ylabel('Accuracy')
@@ -172,7 +183,14 @@ for current_class in range(num_classes):
     plt.tight_layout()
     plt.show()
 
-# Confusion
+# Final Test Predictions
+test_predictions = predict_class(params_list, test_x)
+
+# Final Test Accuracy
+final_test_accuracy = calculate_accuracy(params_list, test_x, test_y)
+print(f"Final Test Accuracy: {final_test_accuracy * 100:.2f}%")
+
+# Confusion Matrix
 confusion_matrix = np.zeros((num_classes, num_classes), dtype=int)
 
 for i in range(len(test_y)):

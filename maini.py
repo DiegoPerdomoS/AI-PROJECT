@@ -1,4 +1,4 @@
-# ORIGINAL IMPROVED
+# IMPROVED ORIGINAL
 
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ df['safety_squared'] = df['safety'] ** 2
 df['persons_lug_boot'] = df['persons'] * df['lug_boot']
 
 # Shuffle
-df = df.sample(frac=1, random_state=40).reset_index(drop=True)
+df = df.sample(frac=1, random_state=10).reset_index(drop=True)
 
 df_x = df[["buying", "maint", "doors", "persons", "lug_boot", "safety", 
            "buying_maint", "safety_squared", "persons_lug_boot"]]
@@ -77,13 +77,10 @@ def calculate_accuracy(params_list, samples, labels, current_class=None):
             return 0
         return np.mean(predictions[relevant_samples] == labels[relevant_samples])
 
-alfa = 0.3
-max_epochs = 2000
+alfa = 0.4
+max_epochs = 3000
 
 # Cross-validation
-cross_val_train_accuracies = []
-cross_val_val_accuracies = []
-
 for fold in range(k_folds):
     start, end = fold * fold_size, (fold + 1) * fold_size
     
@@ -95,6 +92,7 @@ for fold in range(k_folds):
     
     train_accuracies = {i: [] for i in range(num_classes)}
     val_accuracies = {i: [] for i in range(num_classes)}
+    test_accuracies = {i: [] for i in range(num_classes)} 
     costs_per_class = {i: [] for i in range(num_classes)}
     epoch_errors = []
 
@@ -107,31 +105,35 @@ for fold in range(k_folds):
             
             train_acc = calculate_accuracy(params_list, train_x, train_y, current_class)
             val_acc = calculate_accuracy(params_list, val_x, val_y, current_class)
+            test_acc = calculate_accuracy(params_list, df_x, df_y, current_class) 
             
             train_accuracies[current_class].append(train_acc)
             val_accuracies[current_class].append(val_acc)
+            test_accuracies[current_class].append(test_acc)
         
         avg_epoch_cost = np.mean(epoch_costs)
         epoch_errors.append(avg_epoch_cost)
 
-    cross_val_train_accuracies.append(train_accuracies)
-    cross_val_val_accuracies.append(val_accuracies)
-    
+        # Print accuracy every 500 epochs
+        if (epoch + 1) % 500 == 0:
+            print(f"Epoch {epoch+1}:")
+            for current_class in range(num_classes):
+                print(f"  Class {current_class}: Train Accuracy = {train_accuracies[current_class][-1]:.4f}, Validation Accuracy = {val_accuracies[current_class][-1]:.4f}, Test Accuracy = {test_accuracies[current_class][-1]:.4f}")
 
     if fold == k_folds - 1:
-        # Graph accuracy and cost for each class
         for current_class in range(num_classes):
             fig, axs = plt.subplots(1, 2, figsize=(16, 6))
-            
-            # Accuracy 
+
+            # Accuracy plot
             axs[0].plot(train_accuracies[current_class], label=f'Train Accuracy Class {current_class}', linestyle='--')
             axs[0].plot(val_accuracies[current_class], label=f'Validation Accuracy Class {current_class}')
+            axs[0].plot(test_accuracies[current_class], label=f'Test Accuracy Class {current_class}')  # Test accuracy over epochs
             axs[0].set_xlabel('Epochs')
             axs[0].set_ylabel('Accuracy')
             axs[0].set_title(f'Accuracy over Epochs for Class {current_class} (Fold {fold + 1})')
             axs[0].legend()
 
-            # Cost 
+            # Cost plot
             axs[1].plot(costs_per_class[current_class], label=f'Cost for Class {current_class}')
             axs[1].set_xlabel('Epochs')
             axs[1].set_ylabel('Cost')
@@ -141,39 +143,8 @@ for fold in range(k_folds):
             plt.tight_layout()
             plt.show()
 
-# Retrain on the entire training set
-params_list = np.random.uniform(-0.01, 0.01, (num_classes, train_x.shape[1]))
-
-for epoch in range(max_epochs):
-    for current_class in range(num_classes):
-        params_list[current_class], _ = GD(params_list[current_class], train_x, train_y, alfa, current_class)
-
 final_test_accuracy = calculate_accuracy(params_list, df_x, df_y)
-print(f"Final Overall Accuracy (Cross-Validation): {final_test_accuracy * 100:.2f}%")
+final_validation_accuracy = calculate_accuracy(params_list, val_x, val_y)
 
-# Confusion Matrix
-confusion_matrix = np.zeros((num_classes, num_classes), dtype=int)
-
-for i in range(len(df_y)):
-    true_label = df_y[i]
-    pred_label = predict_class(params_list, df_x[i])
-    confusion_matrix[true_label, pred_label] += 1
-
-plt.figure(figsize=(8, 6))
-plt.imshow(confusion_matrix, interpolation='nearest', cmap=plt.cm.Blues)
-plt.title('Confusion Matrix')
-plt.colorbar()
-tick_marks = np.arange(num_classes)
-plt.xticks(tick_marks, [0, 1, 2, 3]) 
-plt.yticks(tick_marks, [0, 1, 2, 3])
-
-thresh = confusion_matrix.max() / 2.0
-for i in range(num_classes):
-    for j in range(num_classes):
-        plt.text(j, i, format(confusion_matrix[i, j], 'd'),
-                 ha="center", va="center",
-                 color="white" if confusion_matrix[i, j] > thresh else "black")
-
-plt.ylabel('True label')
-plt.xlabel('Predicted label')
-plt.show()
+print(f"Final Test Accuracy: {final_test_accuracy * 100:.2f}%")
+print(f"Final Validation Accuracy: {final_validation_accuracy * 100:.2f}%")
